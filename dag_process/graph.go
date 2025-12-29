@@ -26,62 +26,60 @@ type Graph struct {
 }
 
 func NewGraph() *Graph {
-	g := &Graph{make(map[AttrID]*Node), make([][]AttrID, 1)}
+	g := &Graph{make(map[AttrID]*Node), make([][]AttrID, 0)}
 	return g
 }
 
-func (g *Graph) Register(attrID AttrID, dependencies []AttrID, cf ComputeFunc) error {
-	if attrID == "" || cf == nil {
-		return errors.New(fmt.Sprintf("attrID[%v] or cf[%v] is nil", attrID, cf))
-	}
-	if len(dependencies) == 0 && !slices.Contains(g.layers[0], attrID) {
-		g.layers[0] = append(g.layers[0], attrID)
+func (g *Graph) Register(attrID AttrID, dependencies []AttrID, fn ComputeFunc) error {
+	if attrID == "" || (len(dependencies) > 0 && fn == nil) {
+		return errors.New(fmt.Sprintf("attrID[%v] or fn[%v] is nil", attrID, fn))
 	}
 
-	slices.Sort(dependencies)
-	g.nodes[attrID] = &Node{attrID, slices.Compact(dependencies), cf}
+	deps := slices.Clone(dependencies)
+	slices.Sort(deps)
+	g.nodes[attrID] = &Node{attrID, slices.Compact(deps), fn}
 	return nil
 }
 
 func (g *Graph) Compile() error {
-	type entry struct {
-		attrID AttrID
-		layer  int
+	indegree := make(map[AttrID]int)
+	for _, node := range g.nodes {
+		indegree[node.ID] = 0
+		for _, dep := range node.Dependencies {
+			if _, exist := g.nodes[dep]; !exist {
+				return errors.New(fmt.Sprintf("node [%s] depends on missing node [%s]", node.ID, dep))
+			}
+			indegree[node.ID]++
+		}
 	}
 
-	var (
-		path    = make(map[AttrID]bool)
-		visited = make(map[AttrID]bool)
-		dfs     func(entry *entry) bool
-	)
-	dfs = func(e *entry) bool {
-		if path[e.attrID] {
-			return true
+	queue, cnt := make([]AttrID, 0), 0
+	for id, v := range indegree {
+		if v != 0 {
+			continue
 		}
-		if visited[e.attrID] {
-			return false
-		}
+		queue = append(queue, id)
+	}
 
-		path[e.attrID], visited[e.attrID] = true, true
+	for len(queue) > 0 {
+		g.layers, cnt = append(g.layers, slices.Clone(queue)), cnt+len(queue)
 
-		if e.layer > len(g.layers)-1 {
-			g.layers = append(g.layers, []AttrID{e.attrID})
-		} else {
-			g.layers[e.layer] = append(g.layers[e.layer], e.attrID)
-		}
-		for _, dependency := range g.nodes[e.attrID].Dependencies {
-			if dfs(&entry{dependency, e.layer + 1}) {
-				return true
+		nextQueue := make([]AttrID, 0)
+		for _, id := range queue {
+			for _, node := range g.nodes {
+				if slices.Contains(node.Dependencies, id) {
+					indegree[node.ID]--
+					if indegree[node.ID] == 0 {
+						nextQueue = append(nextQueue, node.ID)
+					}
+				}
 			}
 		}
-
-		path[e.attrID] = false
-		return false
+		slices.Sort(nextQueue)
+		queue = nextQueue
 	}
-	for _, attrID := range g.layers[0] {
-		if dfs(&entry{attrID, 0}) {
-			return errors.New("cycle detected in dependency graph")
-		}
+	if cnt < len(g.nodes) {
+		return errors.New("cycle detected in graph")
 	}
 
 	return nil

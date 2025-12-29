@@ -12,13 +12,14 @@ import (
 type ComputeFunc func(ctx context.Context, data map[AttrID]any, attrID AttrID) (any, error)
 
 type Processor struct {
-	g     *Graph
-	data  map[AttrID]any
-	dirty map[AttrID]bool
+	g             *Graph
+	data          map[AttrID]any
+	dirty         map[AttrID]bool
+	parallelLimit int
 }
 
 func NewProcessor(ctx context.Context, data map[AttrID]any) *Processor {
-	return &Processor{g: G.Load(), data: maps.Clone(data), dirty: make(map[AttrID]bool)}
+	return &Processor{g: G.Load(), data: maps.Clone(data), dirty: make(map[AttrID]bool), parallelLimit: Cfg.ParallelLimit}
 }
 
 func (p *Processor) Input(ctx context.Context, input map[AttrID]any) {
@@ -32,24 +33,23 @@ func (p *Processor) Input(ctx context.Context, input map[AttrID]any) {
 	}
 }
 
-func (p *Processor) Propagate(ctx context.Context) error {
+func (p *Processor) Process(ctx context.Context) error {
 	type computeResult struct {
 		attrID  AttrID
 		result  any
-		err     error
 		changed bool
 		skipped bool
 	}
 
-	limit := 5
-	for i, layer := range p.g.layers {
-		if i == 0 {
-			continue
-		}
-
-		fns := make([]func(ctx context.Context) *computeResult, 0)
+	for _, layer := range p.g.layers {
+		fns, results := make([]func(ctx context.Context) error, 0), make(chan *computeResult, len(layer))
 		for _, attrID := range layer {
-			fns = append(fns, func(ctx context.Context) *computeResult {
+			fns = append(fns, func(ctx context.Context) error {
+				if p.g.nodes[attrID].ComputeFunc == nil {
+					results <- &computeResult{attrID: attrID, skipped: true}
+					return nil
+				}
+
 				dependenciesDirty := false
 				for _, dependency := range p.g.nodes[attrID].Dependencies {
 					if p.dirty[dependency] {
@@ -58,36 +58,36 @@ func (p *Processor) Propagate(ctx context.Context) error {
 					}
 				}
 				if !dependenciesDirty {
-					return &computeResult{attrID: attrID, skipped: true}
+					results <- &computeResult{attrID: attrID, skipped: true}
+					return nil
 				}
 
 				newVal, err := p.g.nodes[attrID].ComputeFunc(ctx, p.data, attrID)
 				if err != nil {
-					return &computeResult{attrID: attrID, err: err}
+					results <- &computeResult{attrID: attrID}
+					return err
 				}
-				return &computeResult{attrID: attrID, result: newVal, changed: !reflect.DeepEqual(p.data[attrID], newVal)}
+
+				results <- &computeResult{attrID: attrID, result: newVal, changed: !reflect.DeepEqual(p.data[attrID], newVal)}
+				return nil
 			})
 		}
 
 		eg, newCtx := errgroup.WithContext(ctx)
-		eg.SetLimit(limit)
+		eg.SetLimit(p.parallelLimit)
 		for _, fn := range fns {
-			eg.Go(func() error {
-				ret := fn(newCtx)
-				if ret.err != nil {
-					return ret.err
-				}
-				if ret.skipped || !ret.changed {
-					return nil
-				}
-
-				p.data[ret.attrID], p.dirty[ret.attrID] = ret.result, true
-
-				return nil
-			})
+			eg.Go(func() error { return fn(newCtx) })
 		}
 		if err := eg.Wait(); err != nil {
 			return errors.WithMessagef(err, "process err when Propagate")
+		}
+
+		close(results)
+		for ret := range results {
+			if ret.skipped || !ret.changed {
+				continue
+			}
+			p.data[ret.attrID], p.dirty[ret.attrID] = ret.result, true
 		}
 	}
 
