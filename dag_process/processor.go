@@ -10,33 +10,27 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type ComputeFunc func(ctx context.Context, data map[AttrID]any, attrID AttrID) (any, error)
+type ComputeFunc func(ctx context.Context, data map[AttrID]any, attr AttrID) (any, error)
 
 type Processor struct {
 	g *Graph
 
 	rwm   sync.RWMutex
 	data  map[AttrID]any
+	input map[AttrID]any
 	dirty map[AttrID]bool
 
 	parallelLimit int
 }
 
-func NewProcessor(ctx context.Context, data map[AttrID]any) *Processor {
-	return &Processor{g: G.Load(), data: maps.Clone(data), dirty: make(map[AttrID]bool), parallelLimit: max(Cfg.ParallelLimit, 1)}
-}
-
-func (p *Processor) Input(ctx context.Context, input map[AttrID]any) {
-	p.rwm.Lock()
-	defer p.rwm.Unlock()
-	for id, newVal := range input {
-		oldVal := p.data[id]
-		if reflect.DeepEqual(newVal, oldVal) {
-			continue
-		}
-
-		p.data[id], p.dirty[id] = newVal, true
+func NewProcessor(ctx context.Context, data map[AttrID]any, input map[AttrID]any) *Processor {
+	if data == nil {
+		data = make(map[AttrID]any)
 	}
+	if input == nil {
+		input = make(map[AttrID]any)
+	}
+	return &Processor{g: G.Load(), data: maps.Clone(data), input: maps.Clone(input), dirty: make(map[AttrID]bool), parallelLimit: max(Cfg.ParallelLimit, 1)}
 }
 
 func (p *Processor) Process(ctx context.Context) error {
@@ -46,87 +40,121 @@ func (p *Processor) Process(ctx context.Context) error {
 	}
 
 	var (
-		remainDeps   = make(map[AttrID]*int32)
-		eg, egCtx    = errgroup.WithContext(ctx)
-		unchangedRet = &computeResult{}
-		sema         = make(chan struct{}, p.parallelLimit)
-		compute      func(ctx context.Context, id AttrID) (*computeResult, error)
-		runNode      func(ctx context.Context, id AttrID) error
+		remainDeps        = make(map[AttrID]*int32)
+		eg, egCtx         = errgroup.WithContext(ctx)
+		unchangedRet      = &computeResult{}
+		queue             = make(chan AttrID, len(p.g.nodes))
+		waitingProcessCnt = atomic.Int32{}
+		compute           func(ctx context.Context, attr AttrID) (*computeResult, error)
+		runNode           func(ctx context.Context, attr AttrID) error
+		work              func(ctx context.Context) error
 	)
-
-	for attrID, node := range p.g.nodes {
-		cnt := int32(len(node.Parents))
-		remainDeps[attrID] = &cnt
+	waitingProcessCnt.Store(int32(len(p.g.nodes)))
+	if waitingProcessCnt.Load() == 0 {
+		return nil
 	}
 
-	compute = func(ctx context.Context, id AttrID) (*computeResult, error) {
-		if p.g.nodes[id].ComputeFunc == nil {
-			return unchangedRet, nil
+	for attr, node := range p.g.nodes {
+		cnt := int32(len(node.Parents))
+		remainDeps[attr] = &cnt
+		if cnt == 0 {
+			queue <- attr
 		}
+	}
 
+	compute = func(ctx context.Context, attr AttrID) (*computeResult, error) {
 		depDirty := false
-		for _, depID := range p.g.nodes[id].Parents {
+		p.rwm.RLock()
+		for _, depID := range p.g.nodes[attr].Parents {
 			if p.dirty[depID] {
 				depDirty = true
 				break
 			}
 		}
-		if !depDirty {
+		p.rwm.RUnlock()
+		if !depDirty && p.input[attr] == nil {
 			return unchangedRet, nil
 		}
 
+		var (
+			oldVal any
+			newVal any
+			err    error
+		)
 		p.rwm.RLock()
-		data := make(map[AttrID]any)
-		for _, depID := range p.g.nodes[id].Parents {
-			data[depID] = p.data[depID]
-		}
+		oldVal = p.data[attr]
 		p.rwm.RUnlock()
 
-		select {
-		case sema <- struct{}{}:
-			defer func() { <-sema }()
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+		if v := p.input[attr]; v != nil {
+			newVal = v
+		} else if p.g.nodes[attr].ComputeFunc != nil {
+			p.rwm.RLock()
+			data := make(map[AttrID]any)
+			for _, depID := range p.g.nodes[attr].Parents {
+				data[depID] = p.data[depID]
+			}
+			p.rwm.RUnlock()
 
-		newVal, err := p.g.nodes[id].ComputeFunc(ctx, data, id)
+			newVal, err = p.g.nodes[attr].ComputeFunc(ctx, data, attr)
+		} else {
+			newVal = oldVal
+		}
 		if err != nil {
 			return nil, err
 		}
 
 		changed := false
-		if !reflect.DeepEqual(newVal, p.data[id]) {
+		if !reflect.DeepEqual(newVal, oldVal) {
 			changed = true
 		}
 		return &computeResult{val: newVal, changed: changed}, nil
 	}
 
-	runNode = func(ctx context.Context, id AttrID) error {
-		ret, err := compute(ctx, id)
+	runNode = func(ctx context.Context, attr AttrID) error {
+		defer func() {
+			if v := waitingProcessCnt.Add(-1); v == 0 {
+				close(queue)
+			}
+		}()
+
+		ret, err := compute(ctx, attr)
 		if err != nil {
 			return err
 		}
 		if ret.changed {
 			p.rwm.Lock()
-			p.data[id], p.dirty[id] = ret.val, true
+			p.data[attr], p.dirty[attr] = ret.val, true
 			p.rwm.Unlock()
 		}
 
-		for _, child := range p.g.nodes[id].Children {
+		for _, child := range p.g.nodes[attr].Children {
 			if v := atomic.AddInt32(remainDeps[child], -1); v > 0 {
 				continue
 			}
-			eg.Go(func() error { return runNode(ctx, child) })
+			queue <- child
 		}
 
 		return nil
 	}
 
-	for id, remainDep := range remainDeps {
-		if atomic.LoadInt32(remainDep) > 0 {
-			continue
+	work = func(ctx context.Context) error {
+		for {
+			select {
+			case <-egCtx.Done():
+				return nil
+			case attr, ok := <-queue:
+				if !ok {
+					return nil
+				}
+				if err := runNode(ctx, attr); err != nil {
+					return err
+				}
+			}
 		}
-		eg.Go(func() error { return runNode(egCtx, id) })
+	}
+
+	for i := 0; i < p.parallelLimit; i++ {
+		eg.Go(func() error { return work(egCtx) })
 	}
 
 	return eg.Wait()
