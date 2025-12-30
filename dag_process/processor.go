@@ -23,10 +23,12 @@ type Processor struct {
 }
 
 func NewProcessor(ctx context.Context, data map[AttrID]any) *Processor {
-	return &Processor{g: G.Load(), data: maps.Clone(data), dirty: make(map[AttrID]bool)}
+	return &Processor{g: G.Load(), data: maps.Clone(data), dirty: make(map[AttrID]bool), parallelLimit: max(Cfg.ParallelLimit, 1)}
 }
 
 func (p *Processor) Input(ctx context.Context, input map[AttrID]any) {
+	p.rwm.Lock()
+	defer p.rwm.Unlock()
 	for id, newVal := range input {
 		oldVal := p.data[id]
 		if reflect.DeepEqual(newVal, oldVal) {
@@ -47,6 +49,7 @@ func (p *Processor) Process(ctx context.Context) error {
 		remainDeps   = make(map[AttrID]*int32)
 		eg, egCtx    = errgroup.WithContext(ctx)
 		unchangedRet = &computeResult{}
+		sema         = make(chan struct{}, p.parallelLimit)
 		compute      func(ctx context.Context, id AttrID) (*computeResult, error)
 		runNode      func(ctx context.Context, id AttrID) error
 	)
@@ -78,6 +81,13 @@ func (p *Processor) Process(ctx context.Context) error {
 			data[depID] = p.data[depID]
 		}
 		p.rwm.RUnlock()
+
+		select {
+		case sema <- struct{}{}:
+			defer func() { <-sema }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 
 		newVal, err := p.g.nodes[id].ComputeFunc(ctx, data, id)
 		if err != nil {
