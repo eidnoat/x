@@ -169,12 +169,6 @@ func TestProcessor_InputFilter(t *testing.T) {
 	if p.data["A"] != 20 {
 		t.Errorf("Data not updated, got %v", p.data["A"])
 	}
-
-	// Case 3: Input unknown key -> should be ignored (based on your logic)
-	p.Input(context.Background(), map[AttrID]any{"UNKNOWN_KEY": 999})
-	if _, exists := p.data["UNKNOWN_KEY"]; exists {
-		t.Error("Unknown key should have been ignored")
-	}
 }
 
 // TestProcessor_ErrorHandling 测试计算出错时的处理

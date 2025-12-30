@@ -4,28 +4,34 @@ import (
 	"context"
 	"maps"
 	"reflect"
+	"sync"
+	"sync/atomic"
 
-	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
 
 type ComputeFunc func(ctx context.Context, data map[AttrID]any, attrID AttrID) (any, error)
 
 type Processor struct {
-	g             *Graph
-	data          map[AttrID]any
-	dirty         map[AttrID]bool
+	g *Graph
+
+	rwm   sync.RWMutex
+	data  map[AttrID]any
+	dirty map[AttrID]bool
+
 	parallelLimit int
 }
 
 func NewProcessor(ctx context.Context, data map[AttrID]any) *Processor {
-	return &Processor{g: G.Load(), data: maps.Clone(data), dirty: make(map[AttrID]bool), parallelLimit: Cfg.ParallelLimit}
+	return &Processor{g: G.Load(), data: maps.Clone(data), dirty: make(map[AttrID]bool), parallelLimit: max(Cfg.ParallelLimit, 1)}
 }
 
 func (p *Processor) Input(ctx context.Context, input map[AttrID]any) {
+	p.rwm.Lock()
+	defer p.rwm.Unlock()
 	for id, newVal := range input {
-		oldVal, exist := p.data[id]
-		if !exist || reflect.DeepEqual(newVal, oldVal) {
+		oldVal := p.data[id]
+		if reflect.DeepEqual(newVal, oldVal) {
 			continue
 		}
 
@@ -35,57 +41,93 @@ func (p *Processor) Input(ctx context.Context, input map[AttrID]any) {
 
 func (p *Processor) Process(ctx context.Context) error {
 	type computeResult struct {
-		attrID  AttrID
-		result  any
+		val     any
 		changed bool
 	}
 
-	for _, layer := range p.g.layers {
-		fns, results := make([]func(ctx context.Context) error, 0), make(chan *computeResult, len(layer))
-		for _, attrID := range layer {
-			if p.g.nodes[attrID].ComputeFunc == nil {
-				continue
-			}
+	var (
+		remainDeps   = make(map[AttrID]*int32)
+		eg, egCtx    = errgroup.WithContext(ctx)
+		unchangedRet = &computeResult{}
+		sema         = make(chan struct{}, p.parallelLimit)
+		compute      func(ctx context.Context, id AttrID) (*computeResult, error)
+		runNode      func(ctx context.Context, id AttrID) error
+	)
 
-			fns = append(fns, func(ctx context.Context) error {
-				dependenciesDirty := false
-				for _, dependency := range p.g.nodes[attrID].Dependencies {
-					if p.dirty[dependency] {
-						dependenciesDirty = true
-						break
-					}
-				}
-				if !dependenciesDirty {
-					return nil
-				}
-
-				newVal, err := p.g.nodes[attrID].ComputeFunc(ctx, p.data, attrID)
-				if err != nil {
-					return err
-				}
-
-				results <- &computeResult{attrID: attrID, result: newVal, changed: !reflect.DeepEqual(p.data[attrID], newVal)}
-				return nil
-			})
-		}
-
-		eg, newCtx := errgroup.WithContext(ctx)
-		eg.SetLimit(p.parallelLimit)
-		for _, fn := range fns {
-			eg.Go(func() error { return fn(newCtx) })
-		}
-		if err := eg.Wait(); err != nil {
-			return errors.WithMessagef(err, "process err when Propagate")
-		}
-
-		close(results)
-		for ret := range results {
-			if !ret.changed {
-				continue
-			}
-			p.data[ret.attrID], p.dirty[ret.attrID] = ret.result, true
-		}
+	for attrID, node := range p.g.nodes {
+		cnt := int32(len(node.Parents))
+		remainDeps[attrID] = &cnt
 	}
 
-	return nil
+	compute = func(ctx context.Context, id AttrID) (*computeResult, error) {
+		if p.g.nodes[id].ComputeFunc == nil {
+			return unchangedRet, nil
+		}
+
+		depDirty := false
+		for _, depID := range p.g.nodes[id].Parents {
+			if p.dirty[depID] {
+				depDirty = true
+				break
+			}
+		}
+		if !depDirty {
+			return unchangedRet, nil
+		}
+
+		p.rwm.RLock()
+		data := make(map[AttrID]any)
+		for _, depID := range p.g.nodes[id].Parents {
+			data[depID] = p.data[depID]
+		}
+		p.rwm.RUnlock()
+
+		select {
+		case sema <- struct{}{}:
+			defer func() { <-sema }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+
+		newVal, err := p.g.nodes[id].ComputeFunc(ctx, data, id)
+		if err != nil {
+			return nil, err
+		}
+
+		changed := false
+		if !reflect.DeepEqual(newVal, p.data[id]) {
+			changed = true
+		}
+		return &computeResult{val: newVal, changed: changed}, nil
+	}
+
+	runNode = func(ctx context.Context, id AttrID) error {
+		ret, err := compute(ctx, id)
+		if err != nil {
+			return err
+		}
+		if ret.changed {
+			p.rwm.Lock()
+			p.data[id], p.dirty[id] = ret.val, true
+			p.rwm.Unlock()
+		}
+
+		for _, child := range p.g.nodes[id].Children {
+			if v := atomic.AddInt32(remainDeps[child], -1); v > 0 {
+				continue
+			}
+			eg.Go(func() error { return runNode(ctx, child) })
+		}
+
+		return nil
+	}
+
+	for id, remainDep := range remainDeps {
+		if atomic.LoadInt32(remainDep) > 0 {
+			continue
+		}
+		eg.Go(func() error { return runNode(egCtx, id) })
+	}
+
+	return eg.Wait()
 }
