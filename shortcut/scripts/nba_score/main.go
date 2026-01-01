@@ -272,7 +272,7 @@ func sortTeams(teams []TeamData) {
 }
 
 // ------------------------------------------
-// CSS 修复：缩减间距版
+// CSS 修复：W-L 和 GB 居中
 // ------------------------------------------
 
 func printRankHTML(west, east []TeamData) {
@@ -298,7 +298,7 @@ func printRankHTML(west, east []TeamData) {
    
    .container { display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
    
-   /* 修复点 1：减小卡片宽度，强制内容紧凑 (原 420px -> 350px) */
+   /* 卡片宽度 */
    .card { 
        background-color: var(--card-bg); 
        border-radius: 16px; 
@@ -318,38 +318,37 @@ func printRankHTML(west, east []TeamData) {
        table-layout: fixed; 
    }
 
-   /* --- 修复点 2：优化列宽，消除中间空隙 --- */
+   /* --- 列样式调整：数据列全部居中 --- */
    
-   /* 排名列：40px (够放2位数) */
+   /* 1. 排名 (#): 居中 */
    .col-rank {
        width: 40px;
        text-align: center;
        padding: 8px 0;
    }
    
-   /* 队名列：80px (拉大一点点，给 padding 空间) */
+   /* 2. 队名 (TEAM): 左对齐 + 缩进 */
    .col-team {
        text-align: left;
        padding: 8px 0;
-       padding-left: 15px; /* 保持左对齐缩进 */
+       padding-left: 20px; /* 统一缩进 */
        width: 80px;
    }
 
-   /* 战绩列：100px (足够宽，把内容往左推，不让它跑太远) */
+   /* 3. 战绩 (W-L): 改为居中 */
    .col-rec {
-       text-align: right;
+       text-align: center; /* 居中对齐，修复之前的偏右问题 */
        padding: 8px 0;
        width: 100px;
    }
 
-   /* GB列：剩下的空间 */
+   /* 4. 胜场差 (GB): 改为居中 */
    .col-gb {
-       text-align: right;
+       text-align: center; /* 居中对齐 */
        padding: 8px 0;
        color: var(--text-sub);
    }
 
-   /* 边框与文字 */
    .standings-table th { 
        color: var(--text-sub); 
        font-size: 12px; 
