@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"os"
+	"text/tabwriter"
 	"time"
 )
 
@@ -72,22 +73,26 @@ func main() {
 	}
 
 	// 生成当前日期标题
-	currentTime := time.Now().Format("2006-01-02")
-	fmt.Printf("🏀 NBA 战报 (%s)\n", currentTime)
-	fmt.Println("--------------------------------")
+	fmt.Println("```text")
+	fmt.Printf("🏀 NBA 战报 (%s)\n", time.Now().Format("2006-01-02"))
+	fmt.Println("---------------------------------------")
 
 	if len(result.Events) == 0 {
 		fmt.Println("今天暂时没有比赛。")
+		fmt.Println("```")
 		return
 	}
 
+	// 初始化 TabWriter
+	// 参数含义: output, minwidth, tabwidth, padding, padchar, flags
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
 	for _, event := range result.Events {
 		comp := event.Competitions[0]
-		status := event.Status.Type.State // pre, in, post
+		status := event.Status.Type.State
 		detail := event.Status.Type.ShortDetail
 
 		var home, away Competitor
-		// 区分主客场
 		for _, c := range comp.Competitors {
 			if c.HomeAway == "home" {
 				home = c
@@ -96,8 +101,6 @@ func main() {
 			}
 		}
 
-		// 格式化输出
-		// 图标状态：🔴进行中，✅已结束，🕒未开始
 		stateIcon := "🕒"
 		if status == "in" {
 			stateIcon = "🔴"
@@ -106,28 +109,25 @@ func main() {
 			stateIcon = "✅"
 		}
 
-		// 输出格式：客队 vs 主队
-		// 例如：[✅] LAL (110) - (105) GSW [Final]
 		scoreDisplay := "vs"
 		if status != "pre" {
 			scoreDisplay = fmt.Sprintf("%s - %s", away.Score, home.Score)
 		}
 
-		fmt.Printf("%s %s %s %s  [%s]\n",
+		// 使用 \t (Tab) 进行分隔，tabwriter 会自动对齐
+		// 格式：状态 | 客队 | 比分 | 主队 | 详情
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t[%s]\n",
 			stateIcon,
-			padRight(away.Team.Abbreviation, 4),
+			away.Team.Abbreviation,
 			scoreDisplay,
-			padRight(home.Team.Abbreviation, 4),
+			home.Team.Abbreviation,
 			detail,
 		)
 	}
-	fmt.Println("--------------------------------")
-}
 
-// 辅助函数：右侧填充空格以对齐
-func padRight(str string, length int) string {
-	if len(str) >= length {
-		return str
-	}
-	return str + strings.Repeat(" ", length-len(str))
+	// 刷新缓冲区，将对齐后的内容输出
+	w.Flush()
+
+	fmt.Println("---------------------------------------")
+	fmt.Println("```") // 结束 Markdown 代码块
 }
