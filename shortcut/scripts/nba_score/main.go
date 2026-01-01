@@ -72,62 +72,72 @@ func main() {
 		return
 	}
 
-	// 生成当前日期标题
-	fmt.Println("```text")
-	fmt.Printf("🏀 NBA 战报 (%s)\n", time.Now().Format("2006-01-02"))
-	fmt.Println("---------------------------------------")
+	currentTime := time.Now().Format("2006-01-02")
+
+	// --- 核心修改：输出 HTML 头部 ---
+	// 使用 Menlo 字体保证等宽，背景深色，字号适中
+	fmt.Println(`
+	<!DOCTYPE html>
+	<html>
+	<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<style>
+		body { background-color: #1c1c1e; color: #f2f2f7; font-family: "Menlo", "Courier New", monospace; padding: 20px; font-size: 14px; }
+		pre { white-space: pre-wrap; word-wrap: break-word; }
+		h2 { color: #ff9f0a; margin-bottom: 10px; border-bottom: 1px solid #3a3a3c; padding-bottom: 10px; }
+	</style>
+	</head>
+	<body>
+	`)
+
+	fmt.Printf("<h2>🏀 NBA 战报 (%s)</h2>\n", currentTime)
+	fmt.Println("<pre>") // 开始预格式化文本块
 
 	if len(result.Events) == 0 {
 		fmt.Println("今天暂时没有比赛。")
-		fmt.Println("```")
-		return
-	}
+	} else {
+		// 使用 TabWriter 进行对齐
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		for _, event := range result.Events {
+			comp := event.Competitions[0]
+			status := event.Status.Type.State
+			detail := event.Status.Type.ShortDetail
 
-	// 初始化 TabWriter
-	// 参数含义: output, minwidth, tabwidth, padding, padchar, flags
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
-	for _, event := range result.Events {
-		comp := event.Competitions[0]
-		status := event.Status.Type.State
-		detail := event.Status.Type.ShortDetail
-
-		var home, away Competitor
-		for _, c := range comp.Competitors {
-			if c.HomeAway == "home" {
-				home = c
-			} else {
-				away = c
+			var home, away Competitor
+			for _, c := range comp.Competitors {
+				if c.HomeAway == "home" {
+					home = c
+				} else {
+					away = c
+				}
 			}
-		}
 
-		stateIcon := "🕒"
-		if status == "in" {
-			stateIcon = "🔴"
-			detail = fmt.Sprintf("Q%d %s", event.Status.Period, event.Status.DisplayClock)
-		} else if status == "post" {
-			stateIcon = "✅"
-		}
+			stateIcon := "🕒"
+			if status == "in" {
+				stateIcon = "🔴"
+				detail = fmt.Sprintf("Q%d %s", event.Status.Period, event.Status.DisplayClock)
+			} else if status == "post" {
+				stateIcon = "✅"
+			}
 
-		scoreDisplay := "vs"
-		if status != "pre" {
-			scoreDisplay = fmt.Sprintf("%s - %s", away.Score, home.Score)
-		}
+			scoreDisplay := "vs"
+			if status != "pre" {
+				scoreDisplay = fmt.Sprintf("%s - %s", away.Score, home.Score)
+			}
 
-		// 使用 \t (Tab) 进行分隔，tabwriter 会自动对齐
-		// 格式：状态 | 客队 | 比分 | 主队 | 详情
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t[%s]\n",
-			stateIcon,
-			away.Team.Abbreviation,
-			scoreDisplay,
-			home.Team.Abbreviation,
-			detail,
-		)
+			// 输出行
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t[%s]\n",
+				stateIcon,
+				away.Team.Abbreviation,
+				scoreDisplay,
+				home.Team.Abbreviation,
+				detail,
+			)
+		}
+		w.Flush()
 	}
 
-	// 刷新缓冲区，将对齐后的内容输出
-	w.Flush()
-
-	fmt.Println("---------------------------------------")
-	fmt.Println("```") // 结束 Markdown 代码块
+	// --- 核心修改：输出 HTML 尾部 ---
+	fmt.Println("</pre></body></html>")
 }
