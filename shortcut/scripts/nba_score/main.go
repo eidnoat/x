@@ -8,74 +8,87 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 )
 
 // ==========================================
-// 1. 数据结构定义
+// 1. 通用数据结构 (用于渲染 HTML)
 // ==========================================
 
-// --- 比分数据结构 (ESPN API) ---
+// 用于排名显示的通用结构
+type TeamData struct {
+	TeamTricode string  // e.g. LAL
+	PlayoffRank int     // 排名
+	Wins        int     // 胜
+	Losses      int     // 负
+	GamesBack   float64 // 胜场差
+}
+
+// ==========================================
+// 2. ESPN API JSON 结构定义
+// ==========================================
+
+// --- 比分 (Scoreboard) ---
 type ScoreResponse struct {
 	Events []ScoreEvent `json:"events"`
 }
-
 type ScoreEvent struct {
 	Date         string             `json:"date"`
 	Status       ScoreStatus        `json:"status"`
 	Competitions []ScoreCompetition `json:"competitions"`
 }
-
 type ScoreStatus struct {
 	Type         ScoreType `json:"type"`
 	DisplayClock string    `json:"displayClock"`
 	Period       int       `json:"period"`
 }
-
 type ScoreType struct {
 	State string `json:"state"` // pre, in, post
 }
-
 type ScoreCompetition struct {
 	Competitors []ScoreCompetitor `json:"competitors"`
 }
-
 type ScoreCompetitor struct {
 	HomeAway string    `json:"homeAway"`
 	Team     ScoreTeam `json:"team"`
 	Score    string    `json:"score"`
 }
-
 type ScoreTeam struct {
 	Abbreviation string `json:"abbreviation"`
 }
 
-// --- 排名数据结构 (NBA API) ---
-type RankResponse struct {
-	LeagueStandings struct {
-		Teams []TeamData `json:"teams"`
-	} `json:"leagueStandings"`
+// --- 排名 (Standings) ---
+type ESPNStandingsResponse struct {
+	Children []ESPNConference `json:"children"`
 }
-
-type TeamData struct {
-	TeamTricode string  `json:"teamTricode"` // e.g. LAL, BOS
-	Conference  string  `json:"conference"`  // "East" or "West"
-	PlayoffRank int     `json:"playoffRank"`
-	Wins        int     `json:"wins"`
-	Losses      int     `json:"losses"`
-	GamesBack   float64 `json:"gamesBack"`
+type ESPNConference struct {
+	Name      string        `json:"name"` // e.g. "Western Conference"
+	Standings ESPNStandings `json:"standings"`
+}
+type ESPNStandings struct {
+	Entries []ESPNEntry `json:"entries"`
+}
+type ESPNEntry struct {
+	Team  ESPNTeam   `json:"team"`
+	Stats []ESPNStat `json:"stats"`
+}
+type ESPNTeam struct {
+	Abbreviation string `json:"abbreviation"`
+}
+type ESPNStat struct {
+	Name  string      `json:"name"`  // wins, losses, gamesBehind, playoffSeed
+	Value interface{} `json:"value"` // JSON数字通常解析为 float64
 }
 
 // ==========================================
-// 2. 主入口
+// 3. 主入口
 // ==========================================
 
 func main() {
-	// 定义命令行参数
 	mode := flag.String("m", "score", "模式选择: 'score' (比分) 或 'rank' (排名)")
 	flag.Parse()
 
-	// 根据参数执行不同逻辑
 	switch *mode {
 	case "score":
 		runScoreboard()
@@ -88,7 +101,7 @@ func main() {
 }
 
 // ==========================================
-// 3. 模式 A: 比赛日比分 (Scoreboard)
+// 4. 模式 A: 比赛日比分 (Scoreboard)
 // ==========================================
 
 func runScoreboard() {
@@ -105,7 +118,6 @@ func runScoreboard() {
 	var result ScoreResponse
 	json.Unmarshal(body, &result)
 
-	// 输出比分 HTML
 	printScoreHTML(result)
 }
 
@@ -147,14 +159,12 @@ func printScoreHTML(result ScoreResponse) {
 <body>
 <div class="card"><div class="match-list">
 `)
-
 	if len(result.Events) == 0 {
 		fmt.Println(`<div style="color:var(--text-sub); text-align:center;">今天暂无比赛</div>`)
 	} else {
 		for _, event := range result.Events {
 			comp := event.Competitions[0]
 			state := event.Status.Type.State
-
 			var home, away ScoreCompetitor
 			for _, c := range comp.Competitors {
 				if c.HomeAway == "home" {
@@ -163,7 +173,6 @@ func printScoreHTML(result ScoreResponse) {
 					away = c
 				}
 			}
-
 			var iconClass, iconContent, scoreStr, statusText string
 			switch state {
 			case "pre":
@@ -199,11 +208,12 @@ func printScoreHTML(result ScoreResponse) {
 }
 
 // ==========================================
-// 4. 模式 B: 球队排名 (Standings)
+// 5. 模式 B: 球队排名 (Standings - via ESPN)
 // ==========================================
 
 func runStandings() {
-	url := "https://cdn.nba.com/static/json/liveData/standings/leagueStandings_00.json"
+	// 使用 ESPN Standings API V2
+	url := "http://site.api.espn.com/apis/v2/sports/basketball/nba/standings"
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -213,27 +223,63 @@ func runStandings() {
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	var result RankResponse
+	var result ESPNStandingsResponse
 	json.Unmarshal(body, &result)
 
-	teams := result.LeagueStandings.Teams
-	west := filterAndSort(teams, "West")
-	east := filterAndSort(teams, "East")
+	var westTeams, eastTeams []TeamData
 
-	printRankHTML(west, east)
-}
+	// 解析 ESPN 嵌套结构
+	for _, child := range result.Children {
+		// 确定是东部还是西部
+		isWest := strings.Contains(child.Name, "West")
+		isEast := strings.Contains(child.Name, "East")
 
-func filterAndSort(all []TeamData, conf string) []TeamData {
-	var subset []TeamData
-	for _, t := range all {
-		if t.Conference == conf {
-			subset = append(subset, t)
+		if !isWest && !isEast {
+			continue
+		}
+
+		// 遍历该分区下的所有球队
+		for _, entry := range child.Standings.Entries {
+			t := TeamData{
+				TeamTricode: entry.Team.Abbreviation,
+				Wins:        int(getStatValue(entry.Stats, "wins")),
+				Losses:      int(getStatValue(entry.Stats, "losses")),
+				GamesBack:   getStatValue(entry.Stats, "gamesBehind"),
+				PlayoffRank: int(getStatValue(entry.Stats, "playoffSeed")),
+			}
+
+			if isWest {
+				westTeams = append(westTeams, t)
+			} else {
+				eastTeams = append(eastTeams, t)
+			}
 		}
 	}
-	sort.Slice(subset, func(i, j int) bool {
-		return subset[i].PlayoffRank < subset[j].PlayoffRank
+
+	// 排序 (按排名升序)
+	sortTeams(westTeams)
+	sortTeams(eastTeams)
+
+	printRankHTML(westTeams, eastTeams)
+}
+
+// 辅助函数：从 stats 数组中提取特定数值
+func getStatValue(stats []ESPNStat, name string) float64 {
+	for _, s := range stats {
+		if s.Name == name {
+			// JSON 中的数字在 interface{} 中通常是 float64
+			if v, ok := s.Value.(float64); ok {
+				return v
+			}
+		}
+	}
+	return 0
+}
+
+func sortTeams(teams []TeamData) {
+	sort.Slice(teams, func(i, j int) bool {
+		return teams[i].PlayoffRank < teams[j].PlayoffRank
 	})
-	return subset
 }
 
 func printRankHTML(west, east []TeamData) {
