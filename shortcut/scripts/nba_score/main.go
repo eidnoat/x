@@ -10,13 +10,12 @@ import (
 	"time"
 )
 
-// 定义 ESPN API 的 JSON 结构（只提取需要的字段）
 type Response struct {
 	Events []Event `json:"events"`
 }
 
 type Event struct {
-	ShortName    string        `json:"shortName"`
+	Date         string        `json:"date"`
 	Status       Status        `json:"status"`
 	Competitions []Competition `json:"competitions"`
 }
@@ -28,8 +27,8 @@ type Status struct {
 }
 
 type Type struct {
-	State       string `json:"state"`  // pre, in, post
-	Detail      string `json:"detail"` // e.g., "Final", "10:00 PM"
+	State       string `json:"state"` // pre, in, post
+	Detail      string `json:"detail"`
 	ShortDetail string `json:"shortDetail"`
 }
 
@@ -44,38 +43,27 @@ type Competitor struct {
 }
 
 type Team struct {
-	DisplayName  string `json:"displayName"`
 	Abbreviation string `json:"abbreviation"`
 }
 
 func main() {
-	// ESPN NBA Scoreboard API (无需 Key)
+	// ESPN API
 	url := "http://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
-
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		fmt.Printf("无法连接到网络: %v\n", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("读取数据失败: %v\n", err)
-		return
-	}
-
+	body, _ := io.ReadAll(resp.Body)
 	var result Response
-	if err := json.Unmarshal(body, &result); err != nil {
-		fmt.Printf("解析 JSON 失败: %v\n", err)
-		return
-	}
+	json.Unmarshal(body, &result)
 
 	currentTime := time.Now().Format("2006-01-02")
 
-	// --- 核心修改：输出 HTML 头部 ---
-	// 使用 Menlo 字体保证等宽，背景深色，字号适中
+	// 输出 HTML 头部
+	// 这里预定义了一些 CSS 样式，虽然目前没用到 cssClass，但保留样式表不影响编译
 	fmt.Println(`
 	<!DOCTYPE html>
 	<html>
@@ -83,26 +71,25 @@ func main() {
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<style>
-		body { background-color: #1c1c1e; color: #f2f2f7; font-family: "Menlo", "Courier New", monospace; padding: 20px; font-size: 14px; }
-		pre { white-space: pre-wrap; word-wrap: break-word; }
-		h2 { color: #ff9f0a; margin-bottom: 10px; border-bottom: 1px solid #3a3a3c; padding-bottom: 10px; }
+		body { background-color: #1c1c1e; color: #f2f2f7; font-family: "Menlo", monospace; padding: 15px; font-size: 13px; }
+		h3 { color: #ff9f0a; margin: 0 0 10px 0; border-bottom: 1px solid #3a3a3c; padding-bottom: 5px; }
+		pre { white-space: pre; margin: 0; }
 	</style>
 	</head>
 	<body>
 	`)
 
-	fmt.Printf("<h2>🏀 NBA 战报 (%s)</h2>\n", currentTime)
-	fmt.Println("<pre>") // 开始预格式化文本块
+	fmt.Printf("<h3>🏀 NBA 战报 (%s)</h3>\n", currentTime)
+	fmt.Println("<pre>")
 
 	if len(result.Events) == 0 {
 		fmt.Println("今天暂时没有比赛。")
 	} else {
-		// 使用 TabWriter 进行对齐
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
 		for _, event := range result.Events {
 			comp := event.Competitions[0]
 			status := event.Status.Type.State
-			detail := event.Status.Type.ShortDetail
 
 			var home, away Competitor
 			for _, c := range comp.Competitors {
@@ -113,12 +100,32 @@ func main() {
 				}
 			}
 
-			stateIcon := "🕒"
-			if status == "in" {
+			var stateIcon, detail string
+
+			if status == "pre" {
+				// 未开始
+				stateIcon = "🕒"
+				// 解析 UTC 时间转本地
+				t, err := time.Parse(time.RFC3339, event.Date)
+				if err == nil {
+					detail = t.In(time.Local).Format("15:04")
+				} else {
+					detail = "待定"
+				}
+
+			} else if status == "in" {
+				// 进行中
 				stateIcon = "🔴"
-				detail = fmt.Sprintf("Q%d %s", event.Status.Period, event.Status.DisplayClock)
+				if event.Status.DisplayClock == "0.0" {
+					detail = fmt.Sprintf("Q%d 结束", event.Status.Period)
+				} else {
+					detail = fmt.Sprintf("Q%d %s", event.Status.Period, event.Status.DisplayClock)
+				}
+
 			} else if status == "post" {
+				// 已结束
 				stateIcon = "✅"
+				detail = "Final"
 			}
 
 			scoreDisplay := "vs"
@@ -138,6 +145,5 @@ func main() {
 		w.Flush()
 	}
 
-	// --- 核心修改：输出 HTML 尾部 ---
 	fmt.Println("</pre></body></html>")
 }
