@@ -1,4 +1,4 @@
-package main
+package scripts
 
 import (
 	"encoding/json"
@@ -10,11 +10,6 @@ import (
 	"time"
 )
 
-// ==========================================
-// 1. 数据结构
-// ==========================================
-
-// 我们需要的精简数据模型
 type MarketData struct {
 	Symbol     string
 	Name       string
@@ -25,7 +20,6 @@ type MarketData struct {
 	IsUp       bool
 }
 
-// Yahoo Finance API 返回的复杂 JSON 结构
 type YahooResponse struct {
 	Chart struct {
 		Result []struct {
@@ -40,14 +34,7 @@ type YahooResponse struct {
 	} `json:"chart"`
 }
 
-// ==========================================
-// 2. 主程序
-// ==========================================
-
-func main() {
-	// 定义我们要获取的指数
-	// ^NDX = 纳斯达克 100
-	// ^GSPC = 标普 500
+func runStock() {
 	symbols := []struct {
 		Code string
 		Name string
@@ -59,7 +46,6 @@ func main() {
 	var wg sync.WaitGroup
 	results := make([]MarketData, len(symbols))
 
-	// 并发获取数据
 	for i, s := range symbols {
 		wg.Add(1)
 		go func(index int, code, name string) {
@@ -77,13 +63,8 @@ func main() {
 
 	wg.Wait()
 
-	// 渲染 HTML
-	printHTML(results)
+	printStock(results)
 }
-
-// ==========================================
-// 3. 数据获取逻辑
-// ==========================================
 
 func fetchYahooData(symbol, name string) (MarketData, error) {
 	// Yahoo Finance Chart API
@@ -139,7 +120,7 @@ func fetchYahooData(symbol, name string) (MarketData, error) {
 // 4. HTML / CSS 渲染
 // ==========================================
 
-func printHTML(data []MarketData) {
+func printStock(data []MarketData) {
 	fmt.Println(`
 <!DOCTYPE html>
 <html lang="zh">

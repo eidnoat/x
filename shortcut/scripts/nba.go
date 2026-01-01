@@ -1,8 +1,7 @@
-package main
+package scripts
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,10 +10,6 @@ import (
 	"strings"
 	"time"
 )
-
-// ==========================================
-// 1. 通用数据结构
-// ==========================================
 
 type TeamData struct {
 	TeamTricode string  // e.g. LAL
@@ -79,29 +74,6 @@ type ESPNStat struct {
 	Name  string      `json:"name"`
 	Value interface{} `json:"value"`
 }
-
-// ==========================================
-// 3. 主入口
-// ==========================================
-
-func main() {
-	mode := flag.String("m", "score", "模式选择: 'score' (比分) 或 'rank' (排名)")
-	flag.Parse()
-
-	switch *mode {
-	case "score":
-		runScoreboard()
-	case "rank":
-		runStandings()
-	default:
-		fmt.Fprintf(os.Stderr, "错误: 未知模式 '%s'\n请使用: -m score 或 -m rank\n", *mode)
-		os.Exit(1)
-	}
-}
-
-// ==========================================
-// 4. 模式 A: 比赛日比分 (Scoreboard)
-// ==========================================
 
 func runScoreboard() {
 	url := "http://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
@@ -205,10 +177,6 @@ func printScoreHTML(result ScoreResponse) {
 	}
 	fmt.Println(`</div></div></body></html>`)
 }
-
-// ==========================================
-// 5. 模式 B: 球队排名 (Standings)
-// ==========================================
 
 func runStandings() {
 	url := "http://site.api.espn.com/apis/v2/sports/basketball/nba/standings"
@@ -370,12 +338,12 @@ func printRankHTML(west, east []TeamData) {
 <body>
 <div class="container">
 `)
-	printTable("WESTERN CONFERENCE", west)
-	printTable("EASTERN CONFERENCE", east)
+	printNBA("WESTERN CONFERENCE", west)
+	printNBA("EASTERN CONFERENCE", east)
 	fmt.Println(`</div></body></html>`)
 }
 
-func printTable(title string, teams []TeamData) {
+func printNBA(title string, teams []TeamData) {
 	fmt.Printf(`
     <div class="card">
         <div class="card-header">%s</div>
