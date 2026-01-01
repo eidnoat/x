@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"os"
+	"text/tabwriter"
 	"time"
 )
 
@@ -26,7 +27,7 @@ type Status struct {
 }
 
 type Type struct {
-	State string `json:"state"`
+	State string `json:"state"` // pre, in, post
 }
 
 type Competition struct {
@@ -58,20 +59,71 @@ func main() {
 
 	currentTime := time.Now().Format("2006-01-02")
 
-	// 1. 设置 HTML 头部
-	// 重点：
-	// - 使用 Menlo 字体 (等宽)，利用空格对齐
-	// - font-size: 11px (小字号，防止换行)
-	// - white-space: pre (保留代码中的空格，实现对齐)
-	fmt.Printf(`
+	// --- CSS 核心修改 ---
+	// 1. body 使用 Flex 布局实现垂直水平居中
+	// 2. font-size 调大 (18px)
+	// 3. line-height 增加 (1.5)
+	fmt.Println(`
+	<!DOCTYPE html>
 	<html>
-	<body style="font-family: 'Menlo', 'Courier New', monospace; font-size: 12px; color: #333;">
-	<h3 style="margin: 0 0 10px 0; font-size: 14px;">🏀 NBA 战报 (%s)</h3>
-	`, currentTime)
+	<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			background-color: #1c1c1e;
+		}
+		body { 
+			display: flex;
+			justify-content: center; /* 水平居中 */
+			align-items: center;     /* 垂直居中 */
+			color: #f2f2f7; 
+			font-family: "Menlo", "Courier New", monospace; 
+		}
+		/* 内容容器：包裹标题和表格，确保它们作为一个整体居中 */
+		.container {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			padding: 20px;
+			background-color: #2c2c2e; /* 给卡片加一个稍微浅一点的背景色，突出层次感 */
+			border-radius: 12px;       /* 圆角 */
+			box-shadow: 0 4px 15px rgba(0,0,0,0.5); /* 阴影 */
+		}
+		h3 { 
+			font-size: 24px;           /* 标题加大 */
+			color: #ff9f0a; 
+			margin: 0 0 20px 0; 
+			border-bottom: 2px solid #3a3a3c; 
+			padding-bottom: 10px; 
+			width: 100%;
+			text-align: center;
+		}
+		pre { 
+			font-size: 18px;           /* 正文加大 */
+			line-height: 1.6;          /* 增加行间距 */
+			white-space: pre; 
+			margin: 0; 
+		}
+	</style>
+	</head>
+	<body>
+	<div class="container">
+	`)
+
+	fmt.Printf("<h3>🏀 NBA 战报 (%s)</h3>\n", currentTime)
+	fmt.Println("<pre>")
 
 	if len(result.Events) == 0 {
-		fmt.Println("<p>今天暂时没有比赛。</p>")
+		fmt.Println("今天暂时没有比赛。")
 	} else {
+		// 初始化 tabwriter
+		// minwidth=0, tabwidth=4 (拉宽一点间距), padding=2
+		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+
 		for _, event := range result.Events {
 			comp := event.Competitions[0]
 			status := event.Status.Type.State
@@ -85,8 +137,8 @@ func main() {
 				}
 			}
 
-			// 状态处理
 			var stateIcon, detail string
+
 			if status == "pre" {
 				stateIcon = "🕒"
 				t, err := time.Parse(time.RFC3339, event.Date)
@@ -95,6 +147,7 @@ func main() {
 				} else {
 					detail = "待定"
 				}
+
 			} else if status == "in" {
 				stateIcon = "🔴"
 				if event.Status.DisplayClock == "0.0" {
@@ -102,6 +155,7 @@ func main() {
 				} else {
 					detail = fmt.Sprintf("Q%d %s", event.Status.Period, event.Status.DisplayClock)
 				}
+
 			} else if status == "post" {
 				stateIcon = "✅"
 				detail = "Final"
@@ -109,50 +163,19 @@ func main() {
 
 			scoreDisplay := "vs"
 			if status != "pre" {
-				scoreDisplay = fmt.Sprintf("%3s - %-3s", away.Score, home.Score) // 稍微格式化比分
+				scoreDisplay = fmt.Sprintf("%s - %s", away.Score, home.Score)
 			}
 
-			// 2. 核心修改：使用 <div> 包裹每一行，并使用 padRight 辅助对齐
-			// HTML 表格在快捷指令里容易乱，但 div 块级元素一定会换行
-			// 我们手动拼接字符串，让它在等宽字体下对齐
-
-			// 格式：图标 [客队] [比分] [主队] [详情]
-			// 使用 &nbsp; (不换行空格) 来微调距离，或者直接用 string format
-
-			lineContent := fmt.Sprintf("%s %s %s %s %s",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t[%s]\n",
 				stateIcon,
-				padRight(away.Team.Abbreviation, 4), // 客队占4格
-				padCenter(scoreDisplay, 11),         // 比分占11格居中
-				padRight(home.Team.Abbreviation, 4), // 主队占4格
+				away.Team.Abbreviation,
+				scoreDisplay,
+				home.Team.Abbreviation,
 				detail,
 			)
-
-			// 替换空格为 HTML 不换行空格，防止网页压缩空格
-			htmlContent := strings.ReplaceAll(lineContent, " ", "&nbsp;")
-
-			// 每一行是一个 div，带有底部边框
-			fmt.Printf(`<div style="margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #eee;">%s</div>`, htmlContent)
 		}
+		w.Flush()
 	}
 
-	fmt.Println("</body></html>")
-}
-
-// 辅助函数：右补齐
-func padRight(str string, length int) string {
-	if len(str) >= length {
-		return str
-	}
-	return str + strings.Repeat(" ", length-len(str))
-}
-
-// 辅助函数：居中补齐
-func padCenter(str string, length int) string {
-	if len(str) >= length {
-		return str
-	}
-	padding := length - len(str)
-	left := padding / 2
-	right := padding - left
-	return strings.Repeat(" ", left) + str + strings.Repeat(" ", right)
+	fmt.Println("</pre></div></body></html>")
 }
