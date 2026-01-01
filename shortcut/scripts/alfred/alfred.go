@@ -16,7 +16,7 @@ func main() {
 	case "stock":
 		feed = getStocks()
 	default:
-		feed = AlfredFeed{Items: []AlfredItem{{Title: "未知命令", Subtitle: "请使用: nba-score, nba-rank 或 stock"}}}
+		feed = AlfredFeed{Items: []AlfredItem{{Title: "unknown command", Subtitle: "请使用:stock"}}}
 	}
 
 	// 输出 JSON 给 Alfred

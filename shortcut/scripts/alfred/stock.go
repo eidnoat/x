@@ -29,9 +29,6 @@ func getStocks() AlfredFeed {
 	}
 	wg.Wait()
 
-	// 图标：系统图表图标
-	iconPath := "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GraphIcon.icns"
-
 	for _, d := range results {
 		if d.Name == "" {
 			continue
@@ -49,10 +46,17 @@ func getStocks() AlfredFeed {
 		// 格式: +120.50 (+0.65%)
 		changeStr := fmt.Sprintf("%s%.2f (%s%.2f%%)", sign, d.Change, sign, d.ChangePct)
 
+		icon := ""
+		if d.Name == "纳斯达克 100" {
+			icon = "./icons/NASDAQ 100.png"
+		} else if d.Name == "标普 500" {
+			icon = "./icons/S&P 500.png"
+		}
+
 		items = append(items, AlfredItem{
 			Title:    fmt.Sprintf("%s %s   %s", emoji, d.Name, priceStr),
 			Subtitle: fmt.Sprintf("今日涨跌: %s | 更新于 %s", changeStr, d.LastUpdate),
-			Icon:     &AlfredIcon{Path: iconPath},
+			Icon:     &AlfredIcon{Path: icon},
 			Valid:    true,
 			Arg:      priceStr,
 		})
