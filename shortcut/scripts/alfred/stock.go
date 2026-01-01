@@ -12,8 +12,8 @@ import (
 
 func getStocks() AlfredFeed {
 	symbols := []struct{ Code, Name string }{
-		{"^NDX", "纳斯达克 100"},
-		{"^GSPC", "标普 500"},
+		{"^NDX", "NASDAQ 100"},
+		{"^GSPC", "S&P 500"},
 	}
 
 	var items []AlfredItem
@@ -47,15 +47,15 @@ func getStocks() AlfredFeed {
 		changeStr := fmt.Sprintf("%s%.2f (%s%.2f%%)", sign, d.Change, sign, d.ChangePct)
 
 		icon := ""
-		if d.Name == "纳斯达克 100" {
+		if d.Name == "NASDAQ 100" {
 			icon = "./icons/NASDAQ 100.png"
-		} else if d.Name == "标普 500" {
+		} else if d.Name == "S&P 500" {
 			icon = "./icons/S&P 500.png"
 		}
 
 		items = append(items, AlfredItem{
 			Title:    fmt.Sprintf("%s %s   %s", emoji, d.Name, priceStr),
-			Subtitle: fmt.Sprintf("今日涨跌: %s | 更新于 %s", changeStr, d.LastUpdate),
+			Subtitle: fmt.Sprintf("Change: %s | Updated: %s", changeStr, d.LastUpdate),
 			Icon:     &AlfredIcon{Path: icon},
 			Valid:    true,
 			Arg:      priceStr,
@@ -121,7 +121,7 @@ func fetchYahooData(symbol, name string) (MarketData, error) {
 	return MarketData{
 		Name: name, Price: meta.RegularMarketPrice, Change: change,
 		ChangePct:  (change / meta.ChartPreviousClose) * 100,
-		LastUpdate: time.Unix(meta.RegularMarketTime, 0).Format("15:04"),
+		LastUpdate: time.Unix(meta.RegularMarketTime, 0).Format("01-02 15:04"),
 	}, nil
 }
 
