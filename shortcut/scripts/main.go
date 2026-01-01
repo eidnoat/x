@@ -1,4 +1,4 @@
-package scripts
+package main
 
 import (
 	"flag"
@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("m", "score", "模式选择: 'score' (比分) 或 'rank' (排名)")
+	mode := flag.String("m", "", "")
 	flag.Parse()
 
 	switch *mode {
@@ -15,6 +15,8 @@ func main() {
 		runScoreboard()
 	case "rank":
 		runStandings()
+	case "stock":
+		runStock()
 	default:
 		fmt.Fprintf(os.Stderr, "错误: 未知模式 '%s'\n请使用: -m score 或 -m rank\n", *mode)
 		os.Exit(1)
