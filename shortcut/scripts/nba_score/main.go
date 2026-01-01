@@ -272,7 +272,7 @@ func sortTeams(teams []TeamData) {
 }
 
 // ------------------------------------------
-// CSS 修复重点区域
+// CSS 修复：缩减间距版
 // ------------------------------------------
 
 func printRankHTML(west, east []TeamData) {
@@ -295,62 +295,72 @@ func printRankHTML(west, east []TeamData) {
       }
    }
    body { margin: 0; padding: 40px 0; background-color: var(--bg-color); font-family: 'Courier New', Courier, monospace; color: var(--text-main); display: flex; justify-content: center; min-height: 100vh; }
+   
    .container { display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
-   .card { background-color: var(--card-bg); border-radius: 16px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid var(--border-color); width: 420px; }
+   
+   /* 修复点 1：减小卡片宽度，强制内容紧凑 (原 420px -> 350px) */
+   .card { 
+       background-color: var(--card-bg); 
+       border-radius: 16px; 
+       padding: 25px; 
+       box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
+       border: 1px solid var(--border-color); 
+       width: 350px; 
+   }
+   
    .card-header { font-size: 18px; font-weight: bold; color: var(--header-text); margin-bottom: 20px; text-align: center; padding-bottom: 10px; border-bottom: 2px solid var(--border-color); text-transform: uppercase; letter-spacing: 1px; }
    
-   /* 表格整体布局 */
+   /* 表格布局 */
    .standings-table { 
        width: 100%; 
        border-collapse: collapse; 
        font-size: 14px; 
-       table-layout: fixed; /* 关键：固定列宽 */ 
+       table-layout: fixed; 
    }
 
-   /* --- 列样式定义 --- */
+   /* --- 修复点 2：优化列宽，消除中间空隙 --- */
    
-   /* 1. 排名列 (#) */
+   /* 排名列：40px (够放2位数) */
    .col-rank {
-       width: 50px;           /* 固定宽度，防止挤压第二列 */
+       width: 40px;
        text-align: center;
        padding: 8px 0;
    }
    
-   /* 2. 队名列 (TEAM) - 强制对齐修正 */
+   /* 队名列：80px (拉大一点点，给 padding 空间) */
    .col-team {
        text-align: left;
        padding: 8px 0;
-       padding-left: 20px;    /* 关键：给 th 和 td 统一的左间距 */
-       width: 120px;          /* 给定宽度 */
+       padding-left: 15px; /* 保持左对齐缩进 */
+       width: 80px;
    }
 
-   /* 3. 战绩列 (W-L) */
+   /* 战绩列：100px (足够宽，把内容往左推，不让它跑太远) */
    .col-rec {
        text-align: right;
        padding: 8px 0;
+       width: 100px;
    }
 
-   /* 4. 胜场差列 (GB) */
+   /* GB列：剩下的空间 */
    .col-gb {
        text-align: right;
        padding: 8px 0;
        color: var(--text-sub);
-       width: 40px;
    }
 
-   /* 边框处理 */
+   /* 边框与文字 */
    .standings-table th { 
        color: var(--text-sub); 
        font-size: 12px; 
        border-bottom: 1px solid var(--border-color); 
-       padding-bottom: 10px; /* 表头特有的底部间距 */
+       padding-bottom: 10px; 
    }
    .standings-table td { 
        border-bottom: 1px solid var(--border-color); 
    }
    .standings-table tr:last-child td { border-bottom: none; }
    
-   /* 排名图标 */
    .rank-badge { display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 4px; background-color: var(--rank-bg); font-size: 12px; }
    .top-6 .rank-badge { background-color: var(--header-text); color: var(--bg-color); }
    .play-in .rank-badge { border: 1px solid var(--text-sub); background-color: transparent; color: var(--text-main); }
