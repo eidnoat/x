@@ -61,7 +61,7 @@ func main() {
 	var result Response
 	json.Unmarshal(body, &result)
 
-	// --- 3. 输出 HTML (尺寸调优：中等大小) ---
+	// --- 3. 输出 HTML (引入自动暗黑模式支持) ---
 	fmt.Println(`
 <!DOCTYPE html>
 <html lang="zh">
@@ -70,50 +70,81 @@ func main() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NBA Scoreboard</title>
 <style>
+   /* --- 核心：定义颜色变量 (默认浅色模式) --- */
+   :root {
+      --bg-color: #f2f2f7;        /* 浅灰背景 */
+      --card-bg: #ffffff;         /* 白色卡片 */
+      --text-main: #1d1d1f;       /* 深黑文字 */
+      --text-sub: #86868b;        /* 灰色副文本 */
+      --border-color: #d1d1d6;    /* 浅色边框 */
+      --shadow: 0 10px 30px rgba(0,0,0,0.1);
+      
+      /* 状态图标颜色 (浅色模式下) */
+      --icon-pre-bg: #e5e5ea;
+      --icon-pre-text: #8e8e93;
+   }
+
+   /* --- 核心：当系统检测到暗黑模式时，覆盖变量 --- */
+   @media (prefers-color-scheme: dark) {
+      :root {
+         --bg-color: #000000;       /* 纯黑背景 */
+         --card-bg: #1c1c1e;        /* 深灰卡片 */
+         --text-main: #f5f5f7;      /* 亮白文字 */
+         --text-sub: #98989d;       /* 灰色副文本 */
+         --border-color: #38383a;   /* 深色边框 */
+         --shadow: 0 10px 40px rgba(0,0,0,0.8);
+         
+         /* 状态图标颜色 (暗黑模式下) */
+         --icon-pre-bg: #333333;
+         --icon-pre-text: #aaaaaa;
+      }
+   }
+
    /* 全局重置 */
    body {
       margin: 0;
       padding: 0;
-      background-color: #000000;
+      background-color: var(--bg-color); /* 使用变量 */
       height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
       font-family: 'Courier New', Courier, monospace;
-      color: #ffffff;
+      color: var(--text-main); /* 使用变量 */
+      transition: background-color 0.3s, color 0.3s; /* 切换主题时的平滑过渡 */
    }
 
-   /* 卡片容器：中等尺寸 */
+   /* 卡片容器：中等尺寸 (保持你喜欢的大小) */
    .card {
-      background-color: #121212;
-      border-radius: 16px;       /* 适中的圆角 */
-      padding: 40px 50px;        /* 内边距：比刚才大，比最早版本小 */
-      font-size: 18px;           /* 字号：18px，清晰且精致 */
-      min-width: 520px;          /* 宽度：适中 */
+      background-color: var(--card-bg); /* 使用变量 */
+      border-radius: 16px;
+      padding: 40px 50px;
+      font-size: 18px;
+      min-width: 520px;
       
       display: flex;
       flex-direction: column;
-      align-items: center;       /* 居中对齐 */
+      align-items: center;
       
-      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-      border: 1px solid #333;
+      box-shadow: var(--shadow); /* 使用变量 */
+      border: 1px solid var(--border-color); /* 使用变量 */
    }
 
    /* 列表容器 */
    .match-list {
       display: flex;
       flex-direction: column;
-      gap: 16px; /* 行间距稍微拉开一点 */
+      gap: 16px;
    }
 
    /* 单行比赛 */
    .match-row {
       display: flex;
       align-items: center;
-      gap: 15px; /* 元素间距 */
+      gap: 15px;
    }
 
-   /* --- 列样式：尺寸适配 18px --- */
+   /* --- 列样式 --- */
    
    /* 图标列 */
    .icon-box {
@@ -127,29 +158,35 @@ func main() {
       font-weight: bold;
    }
    
+   /* 状态颜色 (Final 和 Live 在两种模式下通用，保持原色即可) */
    .icon-final { background-color: #00b300; color: white; }
-   .icon-live  { background-color: #cc0000; color: white; animation: pulse 2s infinite;}
-   .icon-pre   { background-color: #333333; color: #aaa; }
+   .icon-live  { background-color: #ff3b30; color: white; animation: pulse 2s infinite;}
+   
+   /* Pre 状态需要适配主题 */
+   .icon-pre   { 
+       background-color: var(--icon-pre-bg); 
+       color: var(--icon-pre-text); 
+   }
 
    /* 队名列 */
    .team {
-      width: 60px; /* 稍微加宽以适应大字体 */
+      width: 60px;
       text-align: center;
       font-weight: bold;
    }
 
    /* 比分列 */
    .score {
-      width: 140px; /* 稍微加宽 */
+      width: 140px;
       text-align: center;
       font-weight: bold;
-      color: #e0e0e0;
+      color: var(--text-main); /* 跟随主文字颜色 */
       letter-spacing: 1px;
    }
 
    /* 状态文本列 */
    .status-text {
-      color: #888;
+      color: var(--text-sub); /* 使用副标题颜色 */
       font-size: 0.85em;
       width: 90px;
       text-align: right;
@@ -167,9 +204,9 @@ func main() {
     <div class="match-list">
 `)
 
-	// --- 4. 循环遍历比赛 ---
+	// --- 4. 循环遍历比赛 (逻辑不变) ---
 	if len(result.Events) == 0 {
-		fmt.Println(`<div style="color:#666; text-align:center; padding:10px;">今天暂无比赛</div>`)
+		fmt.Println(`<div style="color:var(--text-sub); text-align:center; padding:10px;">今天暂无比赛</div>`)
 	} else {
 		for _, event := range result.Events {
 			comp := event.Competitions[0]
