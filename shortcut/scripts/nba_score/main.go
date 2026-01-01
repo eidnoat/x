@@ -61,14 +61,14 @@ func main() {
 	var result Response
 	json.Unmarshal(body, &result)
 
-	// --- 3. 输出 HTML (样式调整为精致小巧版) ---
+	// --- 3. 输出 HTML (尺寸调优：中等大小) ---
 	fmt.Println(`
 <!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NBA Mini Scoreboard</title>
+<title>NBA Scoreboard</title>
 <style>
    /* 全局重置 */
    body {
@@ -79,24 +79,23 @@ func main() {
       display: flex;
       justify-content: center;
       align-items: center;
-      font-family: 'Courier New', Courier, monospace; /* 等宽字体 */
+      font-family: 'Courier New', Courier, monospace;
       color: #ffffff;
    }
 
-   /* 卡片容器：缩小尺寸 */
+   /* 卡片容器：中等尺寸 */
    .card {
       background-color: #121212;
-      border-radius: 12px;       /* 圆角变小 */
-      padding: 24px 30px;        /* 内边距大幅减小 */
-      font-size: 14px;           /* 恢复正常阅读字号 */
-      /* min-width 不再设得特别大，改为适中 */
-      min-width: 400px;          
+      border-radius: 16px;       /* 适中的圆角 */
+      padding: 40px 50px;        /* 内边距：比刚才大，比最早版本小 */
+      font-size: 18px;           /* 字号：18px，清晰且精致 */
+      min-width: 520px;          /* 宽度：适中 */
       
       display: flex;
       flex-direction: column;
       align-items: center;       /* 居中对齐 */
       
-      box-shadow: 0 5px 20px rgba(0,0,0,0.8);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
       border: 1px solid #333;
    }
 
@@ -104,27 +103,27 @@ func main() {
    .match-list {
       display: flex;
       flex-direction: column;
-      gap: 12px; /* 行间距变紧凑 */
+      gap: 16px; /* 行间距稍微拉开一点 */
    }
 
    /* 单行比赛 */
    .match-row {
       display: flex;
       align-items: center;
-      gap: 12px; /* 元素间距变紧凑 */
+      gap: 15px; /* 元素间距 */
    }
 
-   /* --- 列样式：尺寸微调 --- */
+   /* --- 列样式：尺寸适配 18px --- */
    
    /* 图标列 */
    .icon-box {
-      width: 20px;
-      height: 20px;
+      width: 28px;
+      height: 28px;
       display: flex;
       justify-content: center;
       align-items: center;
-      border-radius: 4px;
-      font-size: 12px;
+      border-radius: 6px;
+      font-size: 16px;
       font-weight: bold;
    }
    
@@ -134,24 +133,25 @@ func main() {
 
    /* 队名列 */
    .team {
-      width: 40px; /* 缩减宽度 */
+      width: 60px; /* 稍微加宽以适应大字体 */
       text-align: center;
       font-weight: bold;
    }
 
    /* 比分列 */
    .score {
-      width: 100px; /* 缩减宽度 */
+      width: 140px; /* 稍微加宽 */
       text-align: center;
       font-weight: bold;
       color: #e0e0e0;
+      letter-spacing: 1px;
    }
 
    /* 状态文本列 */
    .status-text {
       color: #888;
-      font-size: 0.85em; /* 稍微小一点 */
-      width: 80px;       /* 缩减宽度 */
+      font-size: 0.85em;
+      width: 90px;
       text-align: right;
    }
    
@@ -167,7 +167,7 @@ func main() {
     <div class="match-list">
 `)
 
-	// --- 4. 循环遍历比赛 (去掉了标题部分) ---
+	// --- 4. 循环遍历比赛 ---
 	if len(result.Events) == 0 {
 		fmt.Println(`<div style="color:#666; text-align:center; padding:10px;">今天暂无比赛</div>`)
 	} else {
