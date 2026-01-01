@@ -16,7 +16,6 @@ import (
 // 1. 通用数据结构
 // ==========================================
 
-// 排名显示结构
 type TeamData struct {
 	TeamTricode string  // e.g. LAL
 	PlayoffRank int     // 排名
@@ -273,7 +272,7 @@ func sortTeams(teams []TeamData) {
 }
 
 // ------------------------------------------
-// 修复点：HTML 输出部分 (Fix Alignment)
+// CSS 修复重点区域
 // ------------------------------------------
 
 func printRankHTML(west, east []TeamData) {
@@ -300,38 +299,63 @@ func printRankHTML(west, east []TeamData) {
    .card { background-color: var(--card-bg); border-radius: 16px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid var(--border-color); width: 420px; }
    .card-header { font-size: 18px; font-weight: bold; color: var(--header-text); margin-bottom: 20px; text-align: center; padding-bottom: 10px; border-bottom: 2px solid var(--border-color); text-transform: uppercase; letter-spacing: 1px; }
    
-   /* 表格样式 */
-   .standings-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; /* 强制列宽 */ }
-   
-   /* --- 核心修复：定义列宽和对齐 --- */
-   /* 第1列：排名 (#) - 固定宽度 */
-   th.col-rank, td.col-rank {
-       width: 45px;          /* 给定足够的固定宽度 */
-       text-align: center;   /* 居中对齐 */
-       box-sizing: border-box;
-   }
-   
-   /* 第2列：队名 (TEAM) - 靠左 */
-   th.col-team, td.col-team {
-       text-align: left;
-       padding-left: 10px;   /* 统一内边距 */
+   /* 表格整体布局 */
+   .standings-table { 
+       width: 100%; 
+       border-collapse: collapse; 
+       font-size: 14px; 
+       table-layout: fixed; /* 关键：固定列宽 */ 
    }
 
-   /* 表头样式 */
-   .standings-table th { color: var(--text-sub); font-size: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+   /* --- 列样式定义 --- */
    
-   /* 单元格样式 */
-   .standings-table td { padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+   /* 1. 排名列 (#) */
+   .col-rank {
+       width: 50px;           /* 固定宽度，防止挤压第二列 */
+       text-align: center;
+       padding: 8px 0;
+   }
+   
+   /* 2. 队名列 (TEAM) - 强制对齐修正 */
+   .col-team {
+       text-align: left;
+       padding: 8px 0;
+       padding-left: 20px;    /* 关键：给 th 和 td 统一的左间距 */
+       width: 120px;          /* 给定宽度 */
+   }
+
+   /* 3. 战绩列 (W-L) */
+   .col-rec {
+       text-align: right;
+       padding: 8px 0;
+   }
+
+   /* 4. 胜场差列 (GB) */
+   .col-gb {
+       text-align: right;
+       padding: 8px 0;
+       color: var(--text-sub);
+       width: 40px;
+   }
+
+   /* 边框处理 */
+   .standings-table th { 
+       color: var(--text-sub); 
+       font-size: 12px; 
+       border-bottom: 1px solid var(--border-color); 
+       padding-bottom: 10px; /* 表头特有的底部间距 */
+   }
+   .standings-table td { 
+       border-bottom: 1px solid var(--border-color); 
+   }
    .standings-table tr:last-child td { border-bottom: none; }
    
-   /* 排名数字样式 */
+   /* 排名图标 */
    .rank-badge { display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 4px; background-color: var(--rank-bg); font-size: 12px; }
    .top-6 .rank-badge { background-color: var(--header-text); color: var(--bg-color); }
    .play-in .rank-badge { border: 1px solid var(--text-sub); background-color: transparent; color: var(--text-main); }
    
    .team-name { font-weight: bold; }
-   .record { text-align: right; width: 80px; font-weight: bold; }
-   .gb { text-align: right; width: 50px; color: var(--text-sub); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -343,7 +367,6 @@ func printRankHTML(west, east []TeamData) {
 }
 
 func printTable(title string, teams []TeamData) {
-	// 使用 class 来控制对齐，确保 th 和 td 使用相同的 class
 	fmt.Printf(`
     <div class="card">
         <div class="card-header">%s</div>
@@ -352,8 +375,8 @@ func printTable(title string, teams []TeamData) {
                 <tr>
                     <th class="col-rank">#</th>
                     <th class="col-team">TEAM</th>
-                    <th style="text-align:right">W - L</th>
-                    <th style="text-align:right">GB</th>
+                    <th class="col-rec">W - L</th>
+                    <th class="col-gb">GB</th>
                 </tr>
             </thead>
             <tbody>
@@ -375,8 +398,8 @@ func printTable(title string, teams []TeamData) {
             <tr class="%s">
                 <td class="col-rank"><span class="rank-badge">%d</span></td>
                 <td class="col-team team-name">%s</td>
-                <td class="record">%d - %d</td>
-                <td class="gb">%s</td>
+                <td class="col-rec">%d - %d</td>
+                <td class="col-gb">%s</td>
             </tr>
         `, rowClass, t.PlayoffRank, t.TeamTricode, t.Wins, t.Losses, gbStr)
 	}
