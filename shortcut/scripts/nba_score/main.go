@@ -5,41 +5,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"text/tabwriter"
 	"time"
 )
 
 type Response struct {
 	Events []Event `json:"events"`
 }
-
 type Event struct {
 	Date         string        `json:"date"`
 	Status       Status        `json:"status"`
 	Competitions []Competition `json:"competitions"`
 }
-
 type Status struct {
 	Type         Type   `json:"type"`
 	DisplayClock string `json:"displayClock"`
 	Period       int    `json:"period"`
 }
-
 type Type struct {
-	State string `json:"state"` // pre, in, post
+	State string `json:"state"`
 }
-
 type Competition struct {
 	Competitors []Competitor `json:"competitors"`
 }
-
 type Competitor struct {
 	HomeAway string `json:"homeAway"`
 	Team     Team   `json:"team"`
 	Score    string `json:"score"`
 }
-
 type Team struct {
 	Abbreviation string `json:"abbreviation"`
 }
@@ -59,71 +51,20 @@ func main() {
 
 	currentTime := time.Now().Format("2006-01-02")
 
-	// --- CSS 核心修改 ---
-	// 1. body 使用 Flex 布局实现垂直水平居中
-	// 2. font-size 调大 (18px)
-	// 3. line-height 增加 (1.5)
-	fmt.Println(`
-	<!DOCTYPE html>
+	// 1. 输出 HTML 表格结构
+	// style 说明：
+	// - table: 宽度100%，无边框
+	// - td: padding 增加间距，text-align 确保对齐
+	fmt.Printf(`
 	<html>
-	<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<style>
-		html, body {
-			height: 100%;
-			margin: 0;
-			padding: 0;
-			background-color: #1c1c1e;
-		}
-		body { 
-			display: flex;
-			justify-content: center; /* 水平居中 */
-			align-items: center;     /* 垂直居中 */
-			color: #f2f2f7; 
-			font-family: "Menlo", "Courier New", monospace; 
-		}
-		/* 内容容器：包裹标题和表格，确保它们作为一个整体居中 */
-		.container {
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			padding: 20px;
-			background-color: #2c2c2e; /* 给卡片加一个稍微浅一点的背景色，突出层次感 */
-			border-radius: 12px;       /* 圆角 */
-			box-shadow: 0 4px 15px rgba(0,0,0,0.5); /* 阴影 */
-		}
-		h3 { 
-			font-size: 24px;           /* 标题加大 */
-			color: #ff9f0a; 
-			margin: 0 0 20px 0; 
-			border-bottom: 2px solid #3a3a3c; 
-			padding-bottom: 10px; 
-			width: 100%;
-			text-align: center;
-		}
-		pre { 
-			font-size: 18px;           /* 正文加大 */
-			line-height: 1.6;          /* 增加行间距 */
-			white-space: pre; 
-			margin: 0; 
-		}
-	</style>
-	</head>
 	<body>
-	<div class="container">
-	`)
-
-	fmt.Printf("<h3>🏀 NBA 战报 (%s)</h3>\n", currentTime)
-	fmt.Println("<pre>")
+	<h3>🏀 NBA 战报 (%s)</h3>
+	<table border="0" cellspacing="0" cellpadding="4" style="font-family: Helvetica, sans-serif; font-size: 14px; width: 100%%;">
+	`, currentTime)
 
 	if len(result.Events) == 0 {
-		fmt.Println("今天暂时没有比赛。")
+		fmt.Println("<tr><td>今天暂时没有比赛。</td></tr>")
 	} else {
-		// 初始化 tabwriter
-		// minwidth=0, tabwidth=4 (拉宽一点间距), padding=2
-		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-
 		for _, event := range result.Events {
 			comp := event.Competitions[0]
 			status := event.Status.Type.State
@@ -137,7 +78,11 @@ func main() {
 				}
 			}
 
-			var stateIcon, detail string
+			// 状态逻辑
+			var stateIcon, detail, colorStyle string
+
+			// 默认颜色 (黑/白，取决于系统深色模式)
+			colorStyle = ""
 
 			if status == "pre" {
 				stateIcon = "🕒"
@@ -147,6 +92,7 @@ func main() {
 				} else {
 					detail = "待定"
 				}
+				colorStyle = "color: #888;" // 灰色
 
 			} else if status == "in" {
 				stateIcon = "🔴"
@@ -155,10 +101,12 @@ func main() {
 				} else {
 					detail = fmt.Sprintf("Q%d %s", event.Status.Period, event.Status.DisplayClock)
 				}
+				colorStyle = "color: #FF3B30; font-weight: bold;" // 红色加粗
 
 			} else if status == "post" {
 				stateIcon = "✅"
 				detail = "Final"
+				colorStyle = "color: #34C759;" // 绿色
 			}
 
 			scoreDisplay := "vs"
@@ -166,16 +114,19 @@ func main() {
 				scoreDisplay = fmt.Sprintf("%s - %s", away.Score, home.Score)
 			}
 
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t[%s]\n",
-				stateIcon,
-				away.Team.Abbreviation,
-				scoreDisplay,
-				home.Team.Abbreviation,
-				detail,
-			)
+			// 2. 输出表格行
+			// 我们使用 width 属性来稍微控制下列宽
+			fmt.Printf(`
+			<tr style="%s">
+				<td width="20" align="center">%s</td>
+				<td width="50" align="left"><b>%s</b></td>
+				<td width="80" align="center">%s</td>
+				<td width="50" align="right"><b>%s</b></td>
+				<td align="right" style="font-size: 12px; opacity: 0.8;">%s</td>
+			</tr>
+			`, colorStyle, stateIcon, away.Team.Abbreviation, scoreDisplay, home.Team.Abbreviation, detail)
 		}
-		w.Flush()
 	}
 
-	fmt.Println("</pre></div></body></html>")
+	fmt.Println("</table></body></html>")
 }
