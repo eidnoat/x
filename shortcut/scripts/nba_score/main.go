@@ -13,10 +13,10 @@ import (
 )
 
 // ==========================================
-// 1. 通用数据结构 (用于渲染 HTML)
+// 1. 通用数据结构
 // ==========================================
 
-// 用于排名显示的通用结构
+// 排名显示结构
 type TeamData struct {
 	TeamTricode string  // e.g. LAL
 	PlayoffRank int     // 排名
@@ -26,7 +26,7 @@ type TeamData struct {
 }
 
 // ==========================================
-// 2. ESPN API JSON 结构定义
+// 2. ESPN API JSON 结构
 // ==========================================
 
 // --- 比分 (Scoreboard) ---
@@ -44,7 +44,7 @@ type ScoreStatus struct {
 	Period       int       `json:"period"`
 }
 type ScoreType struct {
-	State string `json:"state"` // pre, in, post
+	State string `json:"state"`
 }
 type ScoreCompetition struct {
 	Competitors []ScoreCompetitor `json:"competitors"`
@@ -63,7 +63,7 @@ type ESPNStandingsResponse struct {
 	Children []ESPNConference `json:"children"`
 }
 type ESPNConference struct {
-	Name      string        `json:"name"` // e.g. "Western Conference"
+	Name      string        `json:"name"`
 	Standings ESPNStandings `json:"standings"`
 }
 type ESPNStandings struct {
@@ -77,8 +77,8 @@ type ESPNTeam struct {
 	Abbreviation string `json:"abbreviation"`
 }
 type ESPNStat struct {
-	Name  string      `json:"name"`  // wins, losses, gamesBehind, playoffSeed
-	Value interface{} `json:"value"` // JSON数字通常解析为 float64
+	Name  string      `json:"name"`
+	Value interface{} `json:"value"`
 }
 
 // ==========================================
@@ -208,11 +208,10 @@ func printScoreHTML(result ScoreResponse) {
 }
 
 // ==========================================
-// 5. 模式 B: 球队排名 (Standings - via ESPN)
+// 5. 模式 B: 球队排名 (Standings)
 // ==========================================
 
 func runStandings() {
-	// 使用 ESPN Standings API V2
 	url := "http://site.api.espn.com/apis/v2/sports/basketball/nba/standings"
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
@@ -228,17 +227,12 @@ func runStandings() {
 
 	var westTeams, eastTeams []TeamData
 
-	// 解析 ESPN 嵌套结构
 	for _, child := range result.Children {
-		// 确定是东部还是西部
 		isWest := strings.Contains(child.Name, "West")
 		isEast := strings.Contains(child.Name, "East")
-
 		if !isWest && !isEast {
 			continue
 		}
-
-		// 遍历该分区下的所有球队
 		for _, entry := range child.Standings.Entries {
 			t := TeamData{
 				TeamTricode: entry.Team.Abbreviation,
@@ -247,7 +241,6 @@ func runStandings() {
 				GamesBack:   getStatValue(entry.Stats, "gamesBehind"),
 				PlayoffRank: int(getStatValue(entry.Stats, "playoffSeed")),
 			}
-
 			if isWest {
 				westTeams = append(westTeams, t)
 			} else {
@@ -256,18 +249,15 @@ func runStandings() {
 		}
 	}
 
-	// 排序 (按排名升序)
 	sortTeams(westTeams)
 	sortTeams(eastTeams)
 
 	printRankHTML(westTeams, eastTeams)
 }
 
-// 辅助函数：从 stats 数组中提取特定数值
 func getStatValue(stats []ESPNStat, name string) float64 {
 	for _, s := range stats {
 		if s.Name == name {
-			// JSON 中的数字在 interface{} 中通常是 float64
 			if v, ok := s.Value.(float64); ok {
 				return v
 			}
@@ -281,6 +271,10 @@ func sortTeams(teams []TeamData) {
 		return teams[i].PlayoffRank < teams[j].PlayoffRank
 	})
 }
+
+// ------------------------------------------
+// 修复点：HTML 输出部分 (Fix Alignment)
+// ------------------------------------------
 
 func printRankHTML(west, east []TeamData) {
 	fmt.Println(`
@@ -305,15 +299,37 @@ func printRankHTML(west, east []TeamData) {
    .container { display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
    .card { background-color: var(--card-bg); border-radius: 16px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid var(--border-color); width: 420px; }
    .card-header { font-size: 18px; font-weight: bold; color: var(--header-text); margin-bottom: 20px; text-align: center; padding-bottom: 10px; border-bottom: 2px solid var(--border-color); text-transform: uppercase; letter-spacing: 1px; }
-   .standings-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-   .standings-table th { text-align: left; color: var(--text-sub); font-size: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+   
+   /* 表格样式 */
+   .standings-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; /* 强制列宽 */ }
+   
+   /* --- 核心修复：定义列宽和对齐 --- */
+   /* 第1列：排名 (#) - 固定宽度 */
+   th.col-rank, td.col-rank {
+       width: 45px;          /* 给定足够的固定宽度 */
+       text-align: center;   /* 居中对齐 */
+       box-sizing: border-box;
+   }
+   
+   /* 第2列：队名 (TEAM) - 靠左 */
+   th.col-team, td.col-team {
+       text-align: left;
+       padding-left: 10px;   /* 统一内边距 */
+   }
+
+   /* 表头样式 */
+   .standings-table th { color: var(--text-sub); font-size: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+   
+   /* 单元格样式 */
    .standings-table td { padding: 8px 0; border-bottom: 1px solid var(--border-color); }
    .standings-table tr:last-child td { border-bottom: none; }
-   .rank { width: 30px; text-align: center; font-weight: bold; }
-   .rank span { display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 4px; background-color: var(--rank-bg); font-size: 12px; }
-   .top-6 .rank span { background-color: var(--header-text); color: var(--bg-color); }
-   .play-in .rank span { border: 1px solid var(--text-sub); background-color: transparent; color: var(--text-main); }
-   .team-name { padding-left: 10px; font-weight: bold; }
+   
+   /* 排名数字样式 */
+   .rank-badge { display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 4px; background-color: var(--rank-bg); font-size: 12px; }
+   .top-6 .rank-badge { background-color: var(--header-text); color: var(--bg-color); }
+   .play-in .rank-badge { border: 1px solid var(--text-sub); background-color: transparent; color: var(--text-main); }
+   
+   .team-name { font-weight: bold; }
    .record { text-align: right; width: 80px; font-weight: bold; }
    .gb { text-align: right; width: 50px; color: var(--text-sub); font-size: 13px; }
 </style>
@@ -327,7 +343,22 @@ func printRankHTML(west, east []TeamData) {
 }
 
 func printTable(title string, teams []TeamData) {
-	fmt.Printf(`<div class="card"><div class="card-header">%s</div><table class="standings-table"><thead><tr><th style="text-align:center">#</th><th style="padding-left:10px">TEAM</th><th style="text-align:right">W - L</th><th style="text-align:right">GB</th></tr></thead><tbody>`, title)
+	// 使用 class 来控制对齐，确保 th 和 td 使用相同的 class
+	fmt.Printf(`
+    <div class="card">
+        <div class="card-header">%s</div>
+        <table class="standings-table">
+            <thead>
+                <tr>
+                    <th class="col-rank">#</th>
+                    <th class="col-team">TEAM</th>
+                    <th style="text-align:right">W - L</th>
+                    <th style="text-align:right">GB</th>
+                </tr>
+            </thead>
+            <tbody>
+    `, title)
+
 	for _, t := range teams {
 		gbStr := fmt.Sprintf("%.1f", t.GamesBack)
 		if t.GamesBack == 0 {
@@ -339,7 +370,15 @@ func printTable(title string, teams []TeamData) {
 		} else if t.PlayoffRank <= 10 {
 			rowClass = "play-in"
 		}
-		fmt.Printf(`<tr class="%s"><td class="rank"><span>%d</span></td><td class="team-name">%s</td><td class="record">%d - %d</td><td class="gb">%s</td></tr>`, rowClass, t.PlayoffRank, t.TeamTricode, t.Wins, t.Losses, gbStr)
+
+		fmt.Printf(`
+            <tr class="%s">
+                <td class="col-rank"><span class="rank-badge">%d</span></td>
+                <td class="col-team team-name">%s</td>
+                <td class="record">%d - %d</td>
+                <td class="gb">%s</td>
+            </tr>
+        `, rowClass, t.PlayoffRank, t.TeamTricode, t.Wins, t.Losses, gbStr)
 	}
 	fmt.Println(`</tbody></table></div>`)
 }
