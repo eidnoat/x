@@ -7,8 +7,8 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 TARGETS = [
-    {"symbol": ".NDX", "name": "NASDAQ 100"},
-    {"symbol": ".SPX", "name": "S&P 500"}
+    {"symbol": ".NDX", "name": "NDX"},
+    {"symbol": ".SPX", "name": "SPX"}
 ]
 
 
@@ -89,7 +89,7 @@ def get_stocks():
             "arg": price_str,
             "valid": True,
             "icon": {
-                "path": "icons/NASDAQ 100.png" if res["name"] == "NASDAQ 100" else "icons/S&P 500.png"
+                "path": "icons/NASDAQ 100.png" if res["name"] == "NDX" else "icons/S&P 500.png"
             }
         }
         items.append(item)
