@@ -91,17 +91,6 @@ def get_stocks():
         usd_to_cny_rate = rate_future.result()
         results = [future.result() for future in stock_futures]
 
-    if usd_to_cny_rate:
-        items.append({
-            "title": f"¥ USD/CNY   {usd_to_cny_rate:.4f}",
-            "subtitle": f"Updated: {datetime.now().strftime('%H:%M')}",
-            "arg": str(usd_to_cny_rate),
-            "valid": True,
-            "icon": {
-                "path": "icons/exchange.png"
-            }
-        })
-
     for res in results:
         if not res:
             continue
@@ -139,6 +128,17 @@ def get_stocks():
             }
         }
         items.append(item)
+
+    if usd_to_cny_rate:
+        items.append({
+            "title": f"¥ USD/CNY   {usd_to_cny_rate:.4f}",
+            "subtitle": f"Updated: {datetime.now().strftime('%H:%M')}",
+            "arg": str(usd_to_cny_rate),
+            "valid": True,
+            "icon": {
+                "path": "icons/exchange.png"
+            }
+        })
 
     return {"items": items}
 
