@@ -117,7 +117,7 @@ def get_stocks():
         if res["name"] == "NDX":
             icon_path = "icons/NASDAQ 100.png"
         elif res["name"] == "Gold":
-            icon_path = "icons/gold.png"
+            icon_path = "icons/Gold.png"
 
         item = {
             "title": f"{emoji} {res_name}   {price_str}",
