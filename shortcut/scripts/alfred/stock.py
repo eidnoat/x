@@ -100,7 +100,7 @@ def get_stocks():
         res_change = res["change"]
 
         if res["name"] == "Gold" and usd_to_cny_rate:
-            res_name = "黄金(人民币/克)"
+            res_name = "Gold"
             res_price = (res["price"] / OUNCE_TO_GRAM) * usd_to_cny_rate
             res_change = (res["change"] / OUNCE_TO_GRAM) * usd_to_cny_rate
 
