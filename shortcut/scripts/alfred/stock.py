@@ -87,9 +87,20 @@ def get_stocks():
     with ThreadPoolExecutor(max_workers=4) as executor:
         rate_future = executor.submit(get_usd_to_cny_rate)
         stock_futures = [executor.submit(fetch_single_stock, target) for target in TARGETS]
-        
+
         usd_to_cny_rate = rate_future.result()
         results = [future.result() for future in stock_futures]
+
+    if usd_to_cny_rate:
+        items.append({
+            "title": f"¥ USD/CNY   {usd_to_cny_rate:.4f}",
+            "subtitle": f"Updated: {datetime.now().strftime('%H:%M')}",
+            "arg": str(usd_to_cny_rate),
+            "valid": True,
+            "icon": {
+                "path": "icons/exchange.png"
+            }
+        })
 
     for res in results:
         if not res:
@@ -100,7 +111,6 @@ def get_stocks():
         res_change = res["change"]
 
         if res["name"] == "Gold" and usd_to_cny_rate:
-            res_name = "Gold"
             res_price = (res["price"] / OUNCE_TO_GRAM) * usd_to_cny_rate
             res_change = (res["change"] / OUNCE_TO_GRAM) * usd_to_cny_rate
 
@@ -116,7 +126,7 @@ def get_stocks():
         icon_path = "icons/S&P 500.png"  # Default icon
         if res["name"] == "NDX":
             icon_path = "icons/NASDAQ 100.png"
-        elif res["name"] == "Gold":
+        elif res_name == "Gold":
             icon_path = "icons/Gold.png"
 
         item = {
