@@ -8,8 +8,24 @@ from concurrent.futures import ThreadPoolExecutor
 
 TARGETS = [
     {"symbol": ".NDX", "name": "NDX"},
-    {"symbol": ".SPX", "name": "SPX"}
+    {"symbol": ".SPX", "name": "SPX"},
+    {"symbol": "@GC.1", "name": "Gold"}
 ]
+
+OUNCE_TO_GRAM = 31.1034768
+
+
+def get_usd_to_cny_rate():
+    try:
+        url = "https://api.exchangerate-api.com/v4/latest/USD"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            return data.get("rates", {}).get("CNY")
+    except Exception:
+        return None
 
 
 def fetch_single_stock(target):
@@ -67,12 +83,26 @@ def format_number(n):
 def get_stocks():
     items = []
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(fetch_single_stock, TARGETS))
+    # Fetch exchange rate in parallel with stock data for efficiency
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        rate_future = executor.submit(get_usd_to_cny_rate)
+        stock_futures = [executor.submit(fetch_single_stock, target) for target in TARGETS]
+        
+        usd_to_cny_rate = rate_future.result()
+        results = [future.result() for future in stock_futures]
 
     for res in results:
         if not res:
             continue
+
+        res_name = res["name"]
+        res_price = res["price"]
+        res_change = res["change"]
+
+        if res["name"] == "Gold" and usd_to_cny_rate:
+            res_name = "黄金(人民币/克)"
+            res_price = (res["price"] / OUNCE_TO_GRAM) * usd_to_cny_rate
+            res_change = (res["change"] / OUNCE_TO_GRAM) * usd_to_cny_rate
 
         emoji = "🔴"
         sign = ""
@@ -80,16 +110,22 @@ def get_stocks():
             emoji = "🟢"
             sign = "+"
 
-        price_str = format_number(res["price"])
-        change_str = f"{sign}{res['change']:.2f} ({sign}{res['change_pct']:.2f}%)"
+        price_str = format_number(res_price)
+        change_str = f"{sign}{res_change:.2f} ({sign}{res['change_pct']:.2f}%)"
+
+        icon_path = "icons/S&P 500.png"  # Default icon
+        if res["name"] == "NDX":
+            icon_path = "icons/NASDAQ 100.png"
+        elif res["name"] == "Gold":
+            icon_path = "icons/gold.png"
 
         item = {
-            "title": f"{emoji} {res['name']}   {price_str}",
+            "title": f"{emoji} {res_name}   {price_str}",
             "subtitle": f"Change: {change_str} | Updated: {res['time']}",
             "arg": price_str,
             "valid": True,
             "icon": {
-                "path": "icons/NASDAQ 100.png" if res["name"] == "NDX" else "icons/S&P 500.png"
+                "path": icon_path
             }
         }
         items.append(item)
@@ -104,5 +140,8 @@ if __name__ == "__main__":
             print(json.dumps(data, ensure_ascii=False))
         else:
             sys.exit(0)
-    except Exception:
+    except Exception as e:
+        # It's good practice to log the exception for debugging
+        # but for Alfred, we often want to fail silently.
+        # print(json.dumps({"items": [{"title": "Error", "subtitle": str(e)}]}))
         sys.exit(0)
